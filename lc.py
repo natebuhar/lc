@@ -17,6 +17,7 @@ class Apply:
         if len(args) > 2:
             self.e = (Apply(*args[:-1]), args[-1])
         else:
+            assert len(args) > 1
             self.e = args
 
     def __getitem__(self, index):
@@ -85,20 +86,70 @@ def eta(e):
     """ Eta-convert e: 'x.f x = f' """
     return shift(e.e[0], -1, 0)
 
-def normalize(e):
+def fullbeta(e):
     if isinstance(e, Apply):
-        r = Apply(normalize(e[0]), normalize(e[1]))
-        return normalize(beta(r)) if isbeta(r) else r
-
+        r = Apply(fullbeta(e[0]), fullbeta(e[1]))
+        return fullbeta(beta(r)) if isbeta(r) else r
     elif isinstance(e, Lambda):
-        r = Lambda(normalize(e.e))
-        return normalize(eta(r)) if iseta(r) else r
-
+        r = Lambda(fullbeta(e.e))
+        return r
     else:
         return e
 
-def test():
-    n = normalize
+def normalorder(e):
+    if isinstance(e, Apply):
+        r = Apply(normalorder(e[0]), e[1])
+        if callable(e[0]):
+            f, x = e
+            return normalorder(f(normalorder(x)))
+        else:
+            return normalorder(beta(r)) if isbeta(r) else r
+    else:
+        return e
+
+def read(string):
+    import sexpr
+
+    readtable = [
+        (r"\(", sexpr.Reader.Open), (r"\)", sexpr.Reader.Close),
+        (r"\[", sexpr.Reader.Open), (r"\]", sexpr.Reader.Close),
+    ]
+
+    def macro_lambda(params, body):
+        if params is None:
+            return ['λ', '_', body]
+        elif len(params) == 1:
+            return ['λ', params[0], body]
+        else:
+            return ['λ', params[0], ['lambda', params[1:], body]]
+
+    def macro_let(bindings, body):
+        if bindings is None:
+            return body
+        elif len(bindings) == 1:
+            n, v = bindings[0]
+            return [['λ', n, body], v]
+        else:
+            n, v = bindings[0]
+            return [['λ', n, ['let', bindings[1:], body]], v]
+
+    def parselc(sexpr, bindings):
+        if type(sexpr) is list:
+            if sexpr[0] == 'λ':
+                assert len(sexpr) == 3 and type(sexpr[1]) is str
+                return Lambda(parselc(sexpr[2], [sexpr[1]] + bindings))
+            else:
+                return Apply(*[parselc(x, bindings) for x in sexpr])
+        else:
+            return bindings.index(sexpr) if sexpr in bindings else sexpr
+
+    macros = {'lambda': macro_lambda, 'let': macro_let}
+    expr   = sexpr.read(string, readtable, macros)
+
+    return parselc(expr, [])
+
+def test_1():
+    n = fullbeta
     l = Lambda
     a = Apply
 
@@ -128,3 +179,44 @@ def test():
     assert n(a(SUB, SSSSZ, SSZ)) == n(SSZ)
     assert n(a(SUB, SSZ, SSSSZ)) == n(Z)
     assert n(a(SUB, SSZ, SSZ)) == n(Z)
+
+def test_2():
+    src = """
+    (let [(0    (lambda (_ x)     x))
+          (succ (lambda (n f x)   (f (n f x))))
+          (plus (lambda (m n f x) (m f (n f x))))
+          (pred (lambda (n f x)   (n (lambda (g h) (h (g f))) (lambda (_) x) (lambda (u) u))))
+          (mult (lambda (m n)     (m (plus n) 0)))
+
+          (1 (succ 0))
+          (2 (succ 1))
+          (3 (succ 2))
+
+          (True         (lambda (x y)   x))
+          (False        (lambda (x y)   y))
+          (zero?        (lambda (n)     (n (lambda (x) False) True)))
+          (if-then-else (lambda (p a b) (p a b)))
+
+          (Y
+            (lambda (g)
+              ((lambda (x) (g (x x)))
+               (lambda (x) (g (x x))))))
+
+          (fact-rec
+            (lambda (fact)
+              (lambda (n)
+                (if-then-else
+                  (zero? n)
+                  1
+                  (mult n (fact (pred n)))))))]
+
+       ((Y fact-rec) 3))
+    """
+
+    def natify(e):
+        return Apply(e, lambda n: n + 1, 0)
+
+    def factorial(n):
+        return 1 if n == 0 else n * factorial(n - 1)
+
+    assert normalorder(natify(read(src))) == factorial(3)
