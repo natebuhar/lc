@@ -1,0 +1,29 @@
+(let [(0    (lambda (_ x)     x))
+      (succ (lambda (n f x)   (f (n f x))))
+      (plus (lambda (m n f x) (m f (n f x))))
+      (pred (lambda (n f x)   (n (lambda (g h) (h (g f))) (lambda (_) x) (lambda (u) u))))
+      (mult (lambda (m n)     (m (plus n) 0)))
+
+      (1 (succ 0))
+      (2 (succ 1))
+      (3 (succ 2))
+
+      (True         (lambda (x y)   x))
+      (False        (lambda (x y)   y))
+      (zero?        (lambda (n)     (n (lambda (x) False) True)))
+      (if-then-else (lambda (p a b) (p a b)))
+
+      (Y
+        (lambda (g)
+          ((lambda (x) (g (x x)))
+           (lambda (x) (g (x x))))))
+
+      (fact-rec
+        (lambda (fact)
+          (lambda (n)
+            (if-then-else
+              (zero? n)
+              1
+              (mult n (fact (pred n)))))))]
+
+   ((Y fact-rec) 3))

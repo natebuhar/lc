@@ -1,3 +1,4 @@
 .projectile
 .venv
+.ninja*
 __pycache__

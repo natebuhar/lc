@@ -181,42 +181,26 @@ def test_1():
     assert n(a(SUB, SSZ, SSZ)) == n(Z)
 
 def test_2():
-    src = """
-    (let [(0    (lambda (_ x)     x))
-          (succ (lambda (n f x)   (f (n f x))))
-          (plus (lambda (m n f x) (m f (n f x))))
-          (pred (lambda (n f x)   (n (lambda (g h) (h (g f))) (lambda (_) x) (lambda (u) u))))
-          (mult (lambda (m n)     (m (plus n) 0)))
-
-          (1 (succ 0))
-          (2 (succ 1))
-          (3 (succ 2))
-
-          (True         (lambda (x y)   x))
-          (False        (lambda (x y)   y))
-          (zero?        (lambda (n)     (n (lambda (x) False) True)))
-          (if-then-else (lambda (p a b) (p a b)))
-
-          (Y
-            (lambda (g)
-              ((lambda (x) (g (x x)))
-               (lambda (x) (g (x x))))))
-
-          (fact-rec
-            (lambda (fact)
-              (lambda (n)
-                (if-then-else
-                  (zero? n)
-                  1
-                  (mult n (fact (pred n)))))))]
-
-       ((Y fact-rec) 3))
-    """
-
     def natify(e):
         return Apply(e, lambda n: n + 1, 0)
 
-    def factorial(n):
-        return 1 if n == 0 else n * factorial(n - 1)
+    import sys
+    with open(sys.argv[1]) as f:
+        ast = read(f.read())
 
-    assert normalorder(natify(read(src))) == factorial(3)
+    print(normalorder(natify(ast)))
+
+def test_3():
+    def haskstr(e):
+        if type(e) is int:
+            return '(V {})'.format(e)
+        elif type(e) is Apply:
+            return '(A {})'.format(' '.join(map(haskstr, e)))
+        elif type(e) is Lambda:
+            return '(L {})'.format(haskstr(e.e))
+
+    import sys
+    with open(sys.argv[1]) as f:
+        ast = read(f.read())
+
+    print(haskstr(ast))

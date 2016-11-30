@@ -1,0 +1,6 @@
+
+rule ghc
+    command = ghc -O2 $in
+
+build lc | lc.hi lc.o: ghc lc.hs
+
