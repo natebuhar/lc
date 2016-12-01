@@ -1,5 +1,17 @@
 # -*- coding: utf-8 -*-
 
+import sexpr
+
+class Var:
+    def __init__(self, v):
+        self.v = v
+
+    def __eq__(self, other):
+        return self.v == other
+
+    def __str__(self):
+        return '#' + str(self.v)
+
 class Lambda:
     def __init__(self, e):
         self.e = e
@@ -15,13 +27,16 @@ class Lambda:
 class Apply:
     def __init__(self, *args):
         if len(args) > 2:
-            self.e = (Apply(*args[:-1]), args[-1])
+            self.e = [Apply(*args[:-1]), args[-1]]
         else:
             assert len(args) > 1
-            self.e = args
+            self.e = list(args)
 
     def __getitem__(self, index):
         return self.e[index]
+
+    def __setitem__(self, index, value):
+        self.e[index] = value
 
     def __eq__(self, other):
         if isinstance(other, Apply):
@@ -33,31 +48,37 @@ class Apply:
 
 def shift(e, i, d):
     """ Increment/decrement all free variables in e by i """
-    if isinstance(e, Apply):
+    if type(e) is Var and e.v >= d:
+        return Var(e.v + i)
+    elif isinstance(e, Apply):
         return Apply(shift(e[0], i, d), shift(e[1], i, d))
     elif isinstance(e, Lambda):
         return Lambda(shift(e.e, i, d + 1))
     else:
-        return e + i if type(e) is int and e >= d else e
+        return e
 
 def free(e, v):
     """ Is v a free variable in e? """
-    if isinstance(e, Apply):
+    if type(e) is Var:
+        return e == v
+    elif isinstance(e, Apply):
         return free(e[0], v) or free(e[1], v)
     elif isinstance(e, Lambda):
         return free(e.e, v + 1)
     else:
-        return e == v
+        return e
 
 def subs(e, v, n):
     """ Substitute n for the variable v in e: e[v := n] """
-    if isinstance(e, Apply):
+    if type(e) is Var:
+        return n if e == v else e
+    elif isinstance(e, Apply):
         return Apply(subs(e[0], v, n), subs(e[1], v, n))
     elif isinstance(e, Lambda):
         # increment v and all free variables in n to avoid capture by e
         return Lambda(subs(e.e, v + 1, shift(n, 1, 0)))
     else:
-        return n if e == v else e
+        return e
 
 def isbeta(e):
     """ Is e a beta-redex? """
@@ -107,46 +128,50 @@ def normalorder(e):
     else:
         return e
 
-def read(string):
-    import sexpr
+def macro_lambda(params, body):
+    if params is None:
+        return ['λ', '_', body]
+    elif len(params) == 1:
+        return ['λ', params[0], body]
+    else:
+        return ['λ', params[0], ['lambda', params[1:], body]]
 
+def macro_let(bindings, body):
+    if bindings is None:
+        return body
+    elif len(bindings) == 1:
+        n, v = bindings[0]
+        return [['λ', n, body], v]
+    else:
+        n, v = bindings[0]
+        return [['λ', n, ['let', bindings[1:], body]], v]
+
+macros = {'lambda': macro_lambda, 'let': macro_let}
+
+def parse(e, bindings=[], macros=macros):
+    def f(e, bindings):
+        if type(e) is list:
+            if e[0] in ('λ', '\\'):
+                assert len(e) == 3 and type(e[1]) is str
+                return Lambda(f(e[2], [e[1]] + bindings))
+            elif len(e) == 1:
+                return f(e[0], bindings)
+            elif None in e:
+                return f([x for x in e if x is not None], bindings)
+            else:
+                return Apply(*[f(x, bindings) for x in e])
+        else:
+            return Var(bindings.index(e)) if e in bindings else e
+
+    return f(sexpr.expand(e, macros), bindings)
+
+def read(string):
     readtable = [
         (r"\(", sexpr.Reader.Open), (r"\)", sexpr.Reader.Close),
         (r"\[", sexpr.Reader.Open), (r"\]", sexpr.Reader.Close),
     ]
-
-    def macro_lambda(params, body):
-        if params is None:
-            return ['λ', '_', body]
-        elif len(params) == 1:
-            return ['λ', params[0], body]
-        else:
-            return ['λ', params[0], ['lambda', params[1:], body]]
-
-    def macro_let(bindings, body):
-        if bindings is None:
-            return body
-        elif len(bindings) == 1:
-            n, v = bindings[0]
-            return [['λ', n, body], v]
-        else:
-            n, v = bindings[0]
-            return [['λ', n, ['let', bindings[1:], body]], v]
-
-    def parselc(sexpr, bindings):
-        if type(sexpr) is list:
-            if sexpr[0] == 'λ':
-                assert len(sexpr) == 3 and type(sexpr[1]) is str
-                return Lambda(parselc(sexpr[2], [sexpr[1]] + bindings))
-            else:
-                return Apply(*[parselc(x, bindings) for x in sexpr])
-        else:
-            return bindings.index(sexpr) if sexpr in bindings else sexpr
-
-    macros = {'lambda': macro_lambda, 'let': macro_let}
-    expr   = sexpr.read(string, readtable, macros)
-
-    return parselc(expr, [])
+    e = sexpr.parse(sexpr.lex(string, readtable), readtable)
+    return parse(e, macros=macros)
 
 def test_1():
     n = fullbeta
@@ -188,12 +213,13 @@ def test_2():
     with open(sys.argv[1]) as f:
         ast = read(f.read())
 
+    print(ast)
     print(normalorder(natify(ast)))
 
 def test_3():
     def haskstr(e):
-        if type(e) is int:
-            return '(V {})'.format(e)
+        if type(e) is Var:
+            return '(V {})'.format(e.v)
         elif type(e) is Apply:
             return '(A {})'.format(' '.join(map(haskstr, e)))
         elif type(e) is Lambda:

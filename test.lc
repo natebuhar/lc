@@ -7,6 +7,9 @@
       (1 (succ 0))
       (2 (succ 1))
       (3 (succ 2))
+      (4 (succ 3))
+      (5 (succ 4))
+      (6 (succ 5))
 
       (True         (lambda (x y)   x))
       (False        (lambda (x y)   y))
@@ -26,4 +29,4 @@
               1
               (mult n (fact (pred n)))))))]
 
-   ((Y fact-rec) 3))
+   ((Y fact-rec) 6))

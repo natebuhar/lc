@@ -73,7 +73,10 @@ def parse_tail(head, tail, readtable, paren):
         raise SyntaxError('unmatched ")"')
 
 def parse(tokens, readtable):
-    return parse_tail(next(tokens), tokens, readtable, [])
+    try:
+        return parse_tail(next(tokens), tokens, readtable, [])
+    except StopIteration:
+        return None
 
 def expand(ast, macros):
     if type(ast) is list and len(ast) > 0:
